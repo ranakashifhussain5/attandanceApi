@@ -1,0 +1,5 @@
+[phases.build]
+cmds = ['composer install --ignore-platform-reqs', 'npm i', 'npm run build']
+
+[start]
+cmd = 'php artisan serve --host=0.0.0.0 --port=80'
