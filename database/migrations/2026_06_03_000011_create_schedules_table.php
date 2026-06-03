@@ -1,0 +1,51 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('schedules', function (Blueprint $table) {
+            $table->id();
+
+            $table->foreignId('batch_course_id')
+                ->constrained()
+                ->cascadeOnDelete();
+
+            $table->foreignId('room_id')
+                ->nullable()
+                ->constrained()
+                ->nullOnDelete();
+
+            $table->foreignId('time_slot_id')
+                ->constrained();
+
+            $table->tinyInteger('day_of_week');
+
+            $table->date('effective_from');
+            $table->date('effective_to')->nullable();
+
+            $table->boolean('is_active')->default(true);
+
+            $table->timestamps();
+
+            $table->unique(
+                ['room_id', 'time_slot_id', 'day_of_week', 'effective_from'],
+                'room_slot_unique'
+            );
+
+            $table->unique(
+                ['batch_course_id', 'time_slot_id', 'day_of_week', 'effective_from'],
+                'batch_slot_unique'
+            );
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('schedules');
+    }
+};
