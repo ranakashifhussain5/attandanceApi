@@ -41,6 +41,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('batches', BatchController::class);
         Route::post('batches/{batch}/students', [BatchController::class, 'addStudents']);
         Route::post('batches/{batch}/courses',  [BatchController::class, 'assignCourse']);
+        Route::get('batches/{batch}/sections',         [BatchController::class, 'sections']);
+        Route::get('batches/{batch}/semester-courses', [BatchController::class, 'semesterCourses']);
 
         Route::get('teachers',                              [HodTeacherController::class, 'index']);
         Route::post('teachers',                             [HodTeacherController::class, 'store']);

@@ -11,8 +11,14 @@ class BatchController extends Controller
     public function index(Request $request): JsonResponse
     {
         $batches = Batch::whereHas('program', fn($q) =>
-            $q->where('department_id', $request->user()->department_id)
-        )->with('program')->withCount(['batchStudents', 'batchCourses'])->paginate(15);
+                $q->where('department_id', $request->user()->department_id)
+            )
+            ->when($request->program_id, fn($q) => $q->where('program_id', $request->program_id))
+            ->when($request->start_year, fn($q) => $q->where('start_year', $request->start_year))
+            ->with('program')
+            ->withCount(['batchStudents', 'batchCourses'])
+            ->paginate(15);
+
         return response()->json($batches);
     }
 
@@ -31,7 +37,9 @@ class BatchController extends Controller
 
     public function show(Batch $batch): JsonResponse
     {
-        return response()->json($batch->load(['program', 'batchStudents.student', 'batchCourses.course']));
+        return response()->json(
+            $batch->load(['program', 'batchStudents.student', 'batchCourses.course'])
+        );
     }
 
     public function update(Request $request, Batch $batch): JsonResponse
@@ -48,23 +56,27 @@ class BatchController extends Controller
 
     public function addStudents(Request $request, Batch $batch): JsonResponse
     {
-        $data       = $request->validate([
+        $data      = $request->validate([
             'student_ids'   => 'required|array',
             'student_ids.*' => 'exists:users,id',
         ]);
-        $enrolled   = 0;
-        $alreadyIn  = 0;
-        $enrolledAt = today()->toDateString();
+        $enrolled  = 0;
+        $alreadyIn = 0;
 
         foreach ($data['student_ids'] as $sid) {
             $student = User::find($sid);
-            if (! $student || ! $student->isStudent()) continue;
+            if (!$student || !$student->isStudent()) continue;
 
-            $exists = BatchStudent::where('batch_id', $batch->id)->where('user_id', $sid)->exists();
+            $exists = BatchStudent::where('batch_id', $batch->id)
+                                  ->where('user_id', $sid)->exists();
             if ($exists) { $alreadyIn++; continue; }
 
-            BatchStudent::create(['batch_id' => $batch->id, 'user_id' => $sid,
-                'enrolled_at' => $enrolledAt, 'status' => 'active']);
+            BatchStudent::create([
+                'batch_id'    => $batch->id,
+                'user_id'     => $sid,
+                'enrolled_at' => today()->toDateString(),
+                'status'      => 'active',
+            ]);
             $enrolled++;
         }
 
@@ -73,13 +85,13 @@ class BatchController extends Controller
 
     public function assignCourse(Request $request, Batch $batch): JsonResponse
     {
-        $data = $request->validate([
+        $data    = $request->validate([
             'course_id'  => 'required|exists:courses,id',
             'teacher_id' => 'required|exists:users,id',
         ]);
-
         $teacher = User::findOrFail($data['teacher_id']);
-        if (! $teacher->isTeacher() || $teacher->department_id !== $request->user()->department_id) {
+
+        if (!$teacher->isTeacher() || $teacher->department_id !== $request->user()->department_id) {
             return response()->json(['message' => 'Invalid teacher for this department.'], 422);
         }
 
@@ -89,5 +101,44 @@ class BatchController extends Controller
         );
 
         return response()->json($bc->load(['course', 'teacher']), 201);
+    }
+
+    public function sections(Batch $batch): JsonResponse
+    {
+        return response()->json([
+            ['id' => 1, 'name' => 'Morning'],
+            ['id' => 2, 'name' => 'Evening'],
+        ]);
+    }
+
+    public function semesterCourses(Request $request, Batch $batch): JsonResponse
+    {
+        $request->validate([
+            'semester'   => 'required|integer|min:1',
+            'section_id' => 'nullable|integer',
+        ]);
+
+        $courses = BatchCourse::where('batch_id', $batch->id)
+            ->where('is_active', true)
+            ->whereHas('course', fn($q) => $q->where('semester', $request->semester))
+            ->with([
+                'course:id,name,code,credit_hours,semester',
+                'teacher:id,name,email',
+            ])
+            ->get()
+            ->map(fn($bc) => [
+                'course_id'    => $bc->course_id,
+                'code'         => $bc->course->code,
+                'name'         => $bc->course->name,
+                'credit_hours' => $bc->course->credit_hours,
+                'semester'     => $bc->course->semester,
+                'teacher'      => $bc->teacher ? [
+                    'id'    => $bc->teacher->id,
+                    'name'  => $bc->teacher->name,
+                    'email' => $bc->teacher->email,
+                ] : null,
+            ]);
+
+        return response()->json($courses);
     }
 }
